@@ -3,6 +3,10 @@
 
 # INSTRUCTIONS
 
+prerequisites:
+**pip install requests beautifulsoup4 PyPDF2**
+
+
 simply change the set website in new.py to match your website and novel, and change the min chapter and max chapter to ex: 1-357
 this will crawl and download the novel for chapters 1-357
 
@@ -26,6 +30,12 @@ new.py
 packer:
 
 packer.py INPUTLOCATIONFOLDER outputname.pdf
+
+# MTL TRANSLATOR
+
+translator.py input.pdf output.pdf --source auto --target en
+
+
 
 # HELPFUL IMAGES
 
