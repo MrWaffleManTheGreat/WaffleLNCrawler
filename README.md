@@ -16,6 +16,17 @@ div is the type and class is the name
 
 i have attached a image to help you find your content_div.
 
+
+# COMMANDS / ARGS
+
+**( change the stuff in new.py before running though!!!)**
+
+new.py 
+
+packer:
+
+packer.py INPUTLOCATIONFOLDER outputname.pdf
+
 # HELPFUL IMAGES
 
 content area selects nearly the whole page, but it worked for what i needed it for.
