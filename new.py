@@ -1,171 +1,102 @@
-#!/usr/bin/env python3
 import os
-import pdfkit
-import re
-from PyPDF2 import PdfMerger
-import argparse
+import time
+import requests
+from bs4 import BeautifulSoup
+import html
 
-def extract_chapter_number(filename):
-    """Extract chapter number from filename, handling various formats"""
-    basename = os.path.splitext(os.path.basename(filename))[0].lower()
-    
-    # Try to find numbers in different patterns
-    patterns = [
-        r'chapter_(\d+)',  # chapter_1
-        r'ch(\d+)',        # ch1
-        r'(\d+)',          # 1
-        r'[^\d]*(\d+)[^\d]*'  # any number in filename
-    ]
-    
-    for pattern in patterns:
-        match = re.search(pattern, basename)
-        if match:
-            return int(match.group(1))
-    
-    # If no number found, return a large number to sort these last
-    return 99999
+# Configuration
+base_url = "https://www.fortuneeternal.com/novel/the-artist-who-paints-dungeon-raw-novel/chapter-"
+start_chapter = 1
+end_chapter = 357  # Test with smaller range first
+output_dir = "english_novel"
+delay = 3  # More generous delay to allow translation
 
-def html_to_pdf_chapter_packer(input_folder, output_pdf, title="Novel", toc=True, cover_page=None):
-    """Convert HTML files to PDF chapters"""
-    # Get and sort HTML files
-    html_files = [os.path.join(input_folder, f) 
-                 for f in os.listdir(input_folder) 
-                 if f.lower().endswith('.html')]
-    
-    html_files.sort(key=extract_chapter_number)
-    
-    if not html_files:
-        print("No HTML files found!")
-        return
+# Create output directory
+os.makedirs(output_dir, exist_ok=True)
+print(f"Saving files to: {os.path.abspath(output_dir)}")
 
-    # PDF options
-    options = {
-        'encoding': 'UTF-8',
-        'margin-top': '20mm',
-        'margin-right': '20mm',
-        'margin-bottom': '20mm',
-        'margin-left': '20mm',
-        'footer-center': '[page]',
-        'footer-font-size': '10',
-        'header-left': title,
-        'header-font-size': '10',
-        'header-line': True,
-    }
+headers = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+    'Accept-Language': 'en-US,en;q=0.9'
+}
 
-    if toc:
-        toc_options = {
-            'toc-header-text': 'Table of Contents',
-            'toc-level-indentation': '2em',
-            'toc-text-size-shrink': 0.9,
-        }
-        options.update(toc_options)
+def activate_english_translation(session, url):
+    """Force English translation through the widget"""
+    # First get the page to set cookies
+    response = session.get(url, headers=headers)
+    soup = BeautifulSoup(response.text, 'html.parser')
     
-    # Temporary directory for individual PDFs
-    temp_dir = os.path.join(input_folder, "temp_pdfs")
-    os.makedirs(temp_dir, exist_ok=True)
+    # Find the translation widget
+    translation_div = soup.find('div', class_='gtranslate_wrapper')
+    if translation_div:
+        # Extract the English translation link
+        english_link = translation_div.find('a', title='English')
+        if english_link:
+            # Get the data-gt-lang value for English
+            lang_code = english_link.get('data-gt-lang', 'en')
+            
+            # Set the googtrans cookie to force English
+            session.cookies.set('googtrans', f'/auto/{lang_code}')
+            
+            # Make a new request with the translation cookie
+            return session.get(url, headers=headers)
     
-    # Generate individual PDFs
-    individual_pdfs = []
-    for i, html_file in enumerate(html_files):
-        chapter_options = options.copy()
-        chapter_title = os.path.splitext(os.path.basename(html_file))[0]
-        chapter_options['header-right'] = f"Chapter {i+1}: {chapter_title}"
+    return response
+
+def save_chapter(chapter, content):
+    """Save chapter with proper .html extension"""
+    filename = f"chapter-{chapter}.html"
+    filepath = os.path.join(output_dir, filename)
+    
+    with open(filepath, 'w', encoding='utf-8') as f:
+        f.write(content)
+    return filepath
+
+for chapter in range(start_chapter, end_chapter + 1):
+    url = f"{base_url}{chapter}/"
+    print(f"\nProcessing chapter {chapter}...")
+    
+    try:
+        # Create a session to maintain cookies
+        session = requests.Session()
         
-        output_file = os.path.join(temp_dir, f"chapter_{i+1}.pdf")
-        pdfkit.from_file(html_file, output_file, options=chapter_options)
-        individual_pdfs.append(output_file)
+        # First request to activate English translation
+        response = activate_english_translation(session, url)
+        soup = BeautifulSoup(response.text, 'html.parser')
+        
+        # Get title and content
+        title = soup.find('h1').get_text(strip=True)
+        content_div = soup.find('div', class_='entry-content')
+        
+        # Clean up content (keep translation widget visible)
+        for element in content_div.find_all(['script', 'style', 'iframe', 'nav']):
+            element.decompose()
+        
+        # Save as HTML with translation widget intact
+        html_content = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>{title}</title>
+    <style>
+        body {{ font-family: Arial, sans-serif; line-height: 1.6; padding: 20px; }}
+        h1 {{ color: #333; border-bottom: 1px solid #ddd; }}
+    </style>
+</head>
+<body>
+    {str(soup.find('div', class_='gtranslate_wrapper'))}
+    <h1>{title}</h1>
+    {str(content_div)}
+</body>
+</html>"""
+        
+        saved_file = save_chapter(chapter, html_content)
+        print(f"✓ Saved: {os.path.basename(saved_file)}")
+        
+    except Exception as e:
+        print(f"✗ Error: {str(e)}")
     
-    # Merge PDFs
-    merger = PdfMerger()
-    
-    # Add cover page if provided
-    if cover_page and os.path.exists(cover_page):
-        cover_pdf = os.path.join(temp_dir, "cover.pdf")
-        pdfkit.from_file(cover_page, cover_pdf, options={'margin-top': '0', 'margin-right': '0', 
-                                                       'margin-bottom': '0', 'margin-left': '0'})
-        merger.append(cover_pdf)
-    
-    # Add TOC if enabled
-    if toc:
-        toc_html = generate_toc_html(html_files, title)
-        toc_pdf = os.path.join(temp_dir, "toc.pdf")
-        toc_options = options.copy()
-        toc_options['header-right'] = "Table of Contents"
-        pdfkit.from_string(toc_html, toc_pdf, options=toc_options)
-        merger.append(toc_pdf)
-    
-    # Add chapters
-    for pdf in individual_pdfs:
-        merger.append(pdf)
-    
-    # Write output
-    merger.write(output_pdf)
-    merger.close()
-    
-    # Clean up temporary files
-    for pdf in individual_pdfs:
-        os.remove(pdf)
-    if toc and os.path.exists(os.path.join(temp_dir, "toc.pdf")):
-        os.remove(os.path.join(temp_dir, "toc.pdf"))
-    if cover_page and os.path.exists(os.path.join(temp_dir, "cover.pdf")):
-        os.remove(os.path.join(temp_dir, "cover.pdf"))
-    os.rmdir(temp_dir)
-    
-    print(f"Successfully created {output_pdf} with {len(html_files)} chapters.")
+    time.sleep(delay)
 
-def generate_toc_html(html_files, title):
-    """Generate HTML for table of contents"""
-    toc_html = f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <meta charset="UTF-8">
-        <title>Table of Contents</title>
-        <style>
-            body {{ font-family: Arial, sans-serif; line-height: 1.6; }}
-            h1 {{ text-align: center; margin-bottom: 2em; }}
-            .toc-entry {{ margin-bottom: 0.5em; }}
-            .toc-chapter {{ font-weight: bold; }}
-            .toc-page {{ float: right; }}
-        </style>
-    </head>
-    <body>
-        <h1>{title}</h1>
-        <h2>Table of Contents</h2>
-        <div id="toc">
-    """
-    
-    for i, html_file in enumerate(html_files):
-        chapter_title = os.path.splitext(os.path.basename(html_file))[0]
-        toc_html += f"""
-            <div class="toc-entry">
-                <span class="toc-chapter">Chapter {i+1}: {chapter_title}</span>
-                <span class="toc-page"></span>
-            </div>
-        """
-    
-    toc_html += """
-        </div>
-    </body>
-    </html>
-    """
-    return toc_html
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('-i', '--input', required=True, help='Input folder with HTML files')
-    parser.add_argument('-o', '--output', default='output.pdf', help='Output PDF file')
-    parser.add_argument('-t', '--title', default='Novel', help='Document title')
-    parser.add_argument('-c', '--cover', help='Cover page HTML')
-    parser.add_argument('--no-toc', action='store_false', dest='toc', help='Disable TOC')
-    
-    args = parser.parse_args()
-    
-    html_to_pdf_chapter_packer(
-        input_folder=os.path.abspath(args.input),
-        output_pdf=os.path.abspath(args.output),
-        title=args.title,
-        toc=args.toc,
-        cover_page=args.cover
-    )
+print("\nDownload complete! All chapters saved with English translations.")
+print(f"Location: {os.path.abspath(output_dir)}")
