@@ -1,3 +1,8 @@
+![image](https://github.com/user-attachments/assets/92e2cb36-4cd5-4a12-9872-7b7717091427)
+
+
+# INSTRUCTIONS
+
 simply change the set website in new.py to match your website and novel, and change the min chapter and max chapter to ex: 1-357
 this will crawl and download the novel for chapters 1-357
 
@@ -10,6 +15,8 @@ soup.find('div', class_='content-area')
 div is the type and class is the name
 
 i have attached a image to help you find your content_div.
+
+# HELPFUL IMAGES
 
 content area selects nearly the whole page, but it worked for what i needed it for.
 ![image](https://github.com/user-attachments/assets/b8ab93cc-cc1e-4f12-9d77-c7a5dec63e05)
